@@ -1,0 +1,7 @@
+pandas
+scikit-learn
+nltk
+pytesseract
+opencv-python-headless
+Pillow
+matplotlib
