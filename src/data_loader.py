@@ -5,143 +5,208 @@ import json
 from io import BytesIO
 from PIL import Image
 from bs4 import BeautifulSoup
-import time # Para agregar pausas entre requests (buena práctica de scraping)
+import time
 try:
     from tqdm import tqdm
 except ImportError:
     tqdm = lambda x, **kwargs: x
 
+# Intentar importar kagglehub (opcional)
+try:
+    import kagglehub
+    from kagglehub import KaggleDatasetAdapter
+    KAGGLEHUB_AVAILABLE = True
+except Exception:
+    KAGGLEHUB_AVAILABLE = False
+
 # Rutas y configuración
 CSV_PATH = os.path.join('data', 'FakeNewsNet', 'dataset')
-REQUIRED_COLUMNS = ['title', 'news_url', 'image_url', 'text', 'label']
+os.makedirs(CSV_PATH, exist_ok=True)
+REQUIRED_COLUMNS = ['title', 'canonical_link', 'images', 'text', 'id']
 
 try:
     import pytesseract
 except ImportError:
     pytesseract = None
-    print("La librería pytesseract no se pudo importar")
+    print("La librería pytesseract no se pudo importar (si necesitas OCR instala pytesseract).")
 
-def scrape_article_content(url): # Descarga la página web de la noticia y extrae el texto del artículo y la URL de la imagen principal.
-    
+def scrape_article_content(url):
+    """Extrae texto del artículo y URL de imagen (si hay metadatos) desde la página web."""
     text = ""
     image_url = ""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
     try:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
             return text, image_url
-        try:
-            soup = BeautifulSoup(response.content, 'lxml')
-        except Exception:
-             # Si falla el parsing simplemente devolvemos vacío y saltamos este artículo
-            return text, image_url
-            
-        # 1. Extraer URL de imagen 
+
+        soup = BeautifulSoup(response.content, 'lxml')
+
+        # Intentar obtener og:image
         og_image = soup.find('meta', property='og:image')
         if og_image and 'content' in og_image.attrs:
             image_url = og_image['content']
 
-        # 2. Extraer texto del artículo: Método heurístico
-        article_body = soup.find('article') or soup.find('div', class_=lambda c: c and ('article-body' in c or 'content' in c))
-        
+        # Extraer texto del artículo
+        article_body = soup.find('article') or soup.find(
+            'div', class_=lambda c: c and ('article-body' in c or 'content' in c))
         if article_body:
             paragraphs = article_body.find_all('p')
             text = ' '.join([p.get_text() for p in paragraphs])
-        
+
         if not text:
-             paragraphs = soup.find_all('p')
-             text = ' '.join([p.get_text() for p in paragraphs])
-             
-        text = text[:10000] # Limitar a 10k caracteres
-        
-    except requests.exceptions.RequestException:
-        # Captura errores de red/timeout
-        pass
+            paragraphs = soup.find_all('p')
+            text = ' '.join([p.get_text() for p in paragraphs])
+
+        text = text[:10000]
     except Exception:
-        # Captura cualquier otro error durante el proceso de scraping
         pass
     return text, image_url
 
-def load_fakenewsnet_data_from_csv(): # Carga los datos de PolitiFact
-    
+def try_download_from_kagglehub(target_files=('PolitiFact_real_news_content.csv', 'PolitiFact_fake_news_content.csv')):
+    """Descarga los archivos del dataset de Kaggle si no están localmente."""
+    downloaded = []
+    if not KAGGLEHUB_AVAILABLE:
+        print("kagglehub no está disponible en este entorno. Para descarga automática instala 'kagglehub'.")
+        return downloaded
+
+    print("Intentando descargar archivos desde Kaggle (mdepak/fakenewsnet) usando kagglehub...")
+    try:
+        base_path = kagglehub.dataset_download("mdepak/fakenewsnet")
+        available = os.listdir(base_path)
+        for tf in target_files:
+            if tf in available:
+                try:
+                    df_tmp = kagglehub.load_dataset(KaggleDatasetAdapter.PANDAS, "mdepak/fakenewsnet", tf)
+                    out_path = os.path.join(CSV_PATH, tf)
+                    df_tmp.to_csv(out_path, index=False, encoding='utf-8')
+                    downloaded.append(out_path)
+                    print(f"Descargado y guardado: {out_path}")
+                except Exception as e:
+                    print(f"No se pudo cargar/guardar {tf} desde kagglehub: {e}")
+    except Exception as e:
+        print(f"Error descargando dataset desde kagglehub: {e}")
+    return downloaded
+
+def find_candidate_csvs(path):
+    """Busca posibles CSVs en la carpeta del dataset."""
+    candidates = []
+    try:
+        for fname in os.listdir(path):
+            if fname.lower().endswith('.csv'):
+                fpath = os.path.join(path, fname)
+                try:
+                    if os.path.getsize(fpath) > 200:
+                        candidates.append(fpath)
+                except Exception:
+                    candidates.append(fpath)
+    except FileNotFoundError:
+        pass
+    return candidates
+
+def load_fakenewsnet_data_from_csv():
+    """Carga los CSVs correctos de FakeNewsNet y realiza scraping si faltan columnas."""
     full_path = os.path.abspath(CSV_PATH)
-    
-    # 1. Cargar metadatos
+
+    expected_files = {
+        'PolitiFact_real_news_content.csv': 0,
+        'PolitiFact_fake_news_content.csv': 1
+    }
+
     data_frames = []
-    for ftype, label in [('politifact_real.csv', 0), ('politifact_fake.csv', 1)]:
-        file_path = os.path.join(full_path, ftype)
-        try:
-            df = pd.read_csv(file_path)
-            df['label'] = label
-            data_frames.append(df)
-        except FileNotFoundError:
-            pass
+    found_any = False
+
+    # 1) Intentar cargar archivos locales
+    for fname, label in expected_files.items():
+        file_path = os.path.join(full_path, fname)
+        if os.path.exists(file_path):
+            try:
+                df = pd.read_csv(file_path)
+                df['label'] = label
+                data_frames.append(df)
+                found_any = True
+                print(f"Cargado: {file_path} (label={label})")
+            except Exception as e:
+                print(f"Error leyendo {file_path}: {e}")
+
+    # 2) Intentar descargar si no están
+    if not found_any:
+        downloaded = try_download_from_kagglehub(list(expected_files.keys()))
+        if downloaded:
+            for p in downloaded:
+                try:
+                    df = pd.read_csv(p)
+                    label = 0 if 'real' in os.path.basename(p).lower() else 1
+                    df['label'] = label
+                    data_frames.append(df)
+                    found_any = True
+                except Exception as e:
+                    print(f"Error cargando descargado {p}: {e}")
 
     if not data_frames:
+        print("\nNo se encontraron CSVs de entrada. Por favor coloca:")
+        print(" - PolitiFact_real_news_content.csv")
+        print(" - PolitiFact_fake_news_content.csv")
+        print("en la carpeta:", full_path)
         return pd.DataFrame(columns=REQUIRED_COLUMNS)
 
     df = pd.concat(data_frames, ignore_index=True)
-    
-    # 2. Verificar si necesitamos scraping
     available_cols = df.columns.tolist()
-    critical_missing = [col for col in ['image_url', 'text'] if col not in available_cols]
-    
-    if critical_missing and 'news_url' in available_cols:
-        print(f"\nINICIANDO WEB SCRAPING: Faltan columnas: {critical_missing}")
-        
-        df['text'] = ''
-        df['image_url'] = ''
-        
-        df_to_scrape = df
-        # df_to_scrape = df.head(10)
-        
-        # Aplicar la función de scraping
+
+    # ⚙️ Scraping usando 'canonical_link' e 'images'
+    critical_missing = [col for col in ['text'] if col not in available_cols]
+    if critical_missing and 'canonical_link' in available_cols:
+        print(f"\nINICIANDO WEB SCRAPING: Se usará 'canonical_link' e 'images'")
+        if 'text' not in df.columns:
+            df['text'] = ''
+
         scraped_results = []
-        
-        iterator = tqdm(df_to_scrape.iterrows(), total=len(df_to_scrape), desc="Scraping Artículos")
-            
+        iterator = tqdm(df.iterrows(), total=len(df), desc="Scraping Artículos")
         for index, row in iterator:
-            text, image_url = scrape_article_content(row['news_url'])
-            scraped_results.append({'index': index, 'text': text, 'image_url': image_url})
-            time.sleep(0.5) # Pausa de 0.5 segundos 
-        
-        # Merge de los resultados scrapeados
+            news_url = row.get('canonical_link', '')
+            if not isinstance(news_url, str) or not news_url.startswith('http'):
+                scraped_results.append({'index': index, 'text': '', 'images': row.get('images', '')})
+                continue
+            text, image_url = scrape_article_content(news_url)
+            # Si ya hay imágenes en la columna 'images', no sobrescribir
+            final_image = row.get('images', image_url)
+            scraped_results.append({'index': index, 'text': text, 'images': final_image})
+            time.sleep(0.5)
+
         scraped_df = pd.DataFrame(scraped_results).set_index('index')
-        df.update(scraped_df) # Actualizar el DataFrame principal con los resultados
-        
-        # Eliminar filas donde el scraping no pudo obtener texto ni imagen
-        df = df.dropna(subset=['text', 'image_url']) 
+        df.update(scraped_df)
+        df = df.dropna(subset=['text'])
         df = df[df['text'] != '']
-        df = df[df['image_url'] != '']
 
     elif critical_missing:
-        print(f"\n¡ERROR! Las columnas críticas faltan: {critical_missing}. No se puede continuar.")
+        print(f"\n¡ERROR! Faltan columnas críticas y no hay 'canonical_link' para hacer scraping.")
         return pd.DataFrame(columns=REQUIRED_COLUMNS)
 
-    # 3. Limpieza
-    df = df[REQUIRED_COLUMNS] # Seleccionar las columnas finales
+    # Asegurar columnas requeridas
+    for c in REQUIRED_COLUMNS:
+        if c not in df.columns:
+            df[c] = '' if c != 'label' else 0
+
+    df = df[REQUIRED_COLUMNS + ['label']]
     df = df.reset_index(drop=True)
-    
+
     print(f"\nSe completó la fase de carga. Total de artículos listos para procesamiento: {len(df)}")
     return df
 
-def extract_text_from_url(image_url): # Descarga una imagen desde una URL y aplica OCR (usando Tesseract).
-    
+def extract_text_from_url(image_url):
     if pytesseract is None:
         return ""
-        
     if not isinstance(image_url, str) or not image_url.startswith('http'):
         return ""
-        
     try:
         response = requests.get(image_url, timeout=5)
         if response.status_code != 200:
             return ""
-
         img = Image.open(BytesIO(response.content))
         text = pytesseract.image_to_string(img)
-        
         return text
     except Exception:
         return ""
@@ -149,10 +214,27 @@ def extract_text_from_url(image_url): # Descarga una imagen desde una URL y apli
 if __name__ == '__main__':
     print("Iniciando prueba de carga")
     df = load_fakenewsnet_data_from_csv()
-    
-    print("\nMuestra de datos después del scraping")
-    print(df[['title', 'news_url', 'image_url', 'text', 'label']].head())
-    print(f"\nTotal de noticias procesadas: {len(df)}")
-    
-    if not df.empty:
+
+    print("\n*** Diagnóstico rápido ***")
+    print(f"DataFrame vacío? {df.empty}")
+    print(f"Columnas: {list(df.columns)}")
+    try:
+        print(f"Primeras filas:\n{df.head(3)}")
+    except Exception as e:
+        print(f"No se pudo mostrar head(): {e}")
+    print(f"Total de filas obtenidas: {len(df)}")
+    if not df.empty and 'label' in df.columns:
         print(f"Distribución de etiquetas:\n{df['label'].value_counts()}")
+
+    out_dir = os.path.join('data', 'FakeNewsNet')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, 'fakenewsnet_processed.csv')
+
+    if not df.empty:
+        try:
+            df.to_csv(out_path, index=False, encoding='utf-8')
+            print(f"\nGuardado exitoso en: {os.path.abspath(out_path)}")
+        except Exception as e:
+            print(f"\nError al guardar CSV: {e}")
+    else:
+        print("\nNo se guardó CSV porque el DataFrame está vacío. Revisa los mensajes anteriores para más detalles.")
