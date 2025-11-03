@@ -21,16 +21,3 @@ def clean_text(text): # Limpia el texto: minúsculas, quita stopwords y caracter
     cleaned_tokens = [w for w in tokens if w not in stop_words]
 
     return " ".join(cleaned_tokens)
-
-def extract_text_from_image(image_path):
-    try:
-        # Abrir la imagen usando Pillow 
-        img = Image.open(image_path)
-
-        # Usar pytesseract para "leer" la imagen
-        text = pytesseract.image_to_string(img)
-
-        return text
-    except Exception as e:
-        print(f"Error de OCR en {image_path}: {e}")
-        return "" # Devuelve vacío si falla
