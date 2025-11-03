@@ -93,8 +93,8 @@ def load_fakenewsnet_data_from_csv(): # Carga los datos de PolitiFact
         df['text'] = ''
         df['image_url'] = ''
         
-        # df_to_scrape = df
-        df_to_scrape = df.head(10)
+        df_to_scrape = df
+        # df_to_scrape = df.head(10)
         
         # Aplicar la función de scraping
         scraped_results = []
