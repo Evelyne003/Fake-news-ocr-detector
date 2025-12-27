@@ -11,7 +11,7 @@ try:
 except ImportError:
     tqdm = lambda x, **kwargs: x
 
-# Intentar importar kagglehub (opcional)
+# Intentar importar kagglehub 
 try:
     import kagglehub
     from kagglehub import KaggleDatasetAdapter
@@ -21,6 +21,7 @@ except Exception:
 
 # Rutas y configuración
 CSV_PATH = os.path.join('data', 'FakeNewsNet', 'dataset')
+ISOT_CSV_PATH = os.path.join('data', 'ISOT', 'ISOT_fake_news.csv')
 os.makedirs(CSV_PATH, exist_ok=True)
 REQUIRED_COLUMNS = ['title', 'canonical_link', 'images', 'text', 'id']
 
@@ -28,10 +29,9 @@ try:
     import pytesseract
 except ImportError:
     pytesseract = None
-    print("La librería pytesseract no se pudo importar (si necesitas OCR instala pytesseract).")
+    print("La librería pytesseract no se pudo importar")
 
 def scrape_article_content(url):
-    """Extrae texto del artículo y URL de imagen (si hay metadatos) desde la página web."""
     text = ""
     image_url = ""
     headers = {
@@ -67,7 +67,6 @@ def scrape_article_content(url):
     return text, image_url
 
 def try_download_from_kagglehub(target_files=('PolitiFact_real_news_content.csv', 'PolitiFact_fake_news_content.csv')):
-    """Descarga los archivos del dataset de Kaggle si no están localmente."""
     downloaded = []
     if not KAGGLEHUB_AVAILABLE:
         print("kagglehub no está disponible en este entorno. Para descarga automática instala 'kagglehub'.")
@@ -92,7 +91,6 @@ def try_download_from_kagglehub(target_files=('PolitiFact_real_news_content.csv'
     return downloaded
 
 def find_candidate_csvs(path):
-    """Busca posibles CSVs en la carpeta del dataset."""
     candidates = []
     try:
         for fname in os.listdir(path):
@@ -108,7 +106,6 @@ def find_candidate_csvs(path):
     return candidates
 
 def load_fakenewsnet_data_from_csv():
-    """Carga los CSVs correctos de FakeNewsNet y realiza scraping si faltan columnas."""
     full_path = os.path.abspath(CSV_PATH)
 
     expected_files = {
@@ -155,6 +152,40 @@ def load_fakenewsnet_data_from_csv():
 
     df = pd.concat(data_frames, ignore_index=True)
     available_cols = df.columns.tolist()
+    
+def load_isot_data_from_csv():
+    if not os.path.exists(ISOT_CSV_PATH):
+        print(f"ISOT dataset no encontrado en {ISOT_CSV_PATH}")
+        return pd.DataFrame(columns=REQUIRED_COLUMNS + ['label'])
+
+    try:
+        df = pd.read_csv(ISOT_CSV_PATH)
+        print(f"Cargado ISOT Fake News: {len(df)} filas")
+    except Exception as e:
+        print(f"Error cargando ISOT dataset: {e}")
+        return pd.DataFrame(columns=REQUIRED_COLUMNS + ['label'])
+
+    # Normalizar columnas
+    if 'text' not in df.columns:
+        raise ValueError("El dataset ISOT debe contener la columna 'text'")
+
+    # Normalizar etiquetas
+    if df['label'].dtype == object:
+        df['label'] = df['label'].str.lower().map({
+            'fake': 1,
+            'real': 0
+        })
+
+    # Completar columnas requeridas
+    df['title'] = ''
+    df['canonical_link'] = ''
+    df['images'] = ''
+    df['id'] = df.index.astype(str)
+
+    df = df[REQUIRED_COLUMNS + ['label']]
+    df = df.dropna(subset=['text', 'label'])
+
+    return df
 
     # ⚙️ Scraping usando 'canonical_link' e 'images'
     critical_missing = [col for col in ['text'] if col not in available_cols]
@@ -193,8 +224,16 @@ def load_fakenewsnet_data_from_csv():
     df = df[REQUIRED_COLUMNS + ['label']]
     df = df.reset_index(drop=True)
 
+    # 🔗 Cargar ISOT y fusionar
+    df_isot = load_isot_data_from_csv()
+
+    if not df_isot.empty:
+        df = pd.concat([df, df_isot], ignore_index=True)
+        print(f"ISOT añadido correctamente. Total combinado: {len(df)}")
+
     print(f"\nSe completó la fase de carga. Total de artículos listos para procesamiento: {len(df)}")
     return df
+
 
 def extract_text_from_url(image_url):
     if pytesseract is None:
