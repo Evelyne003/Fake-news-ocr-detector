@@ -4,17 +4,20 @@ Sistema de clasificación binaria para la detección de noticias falsas que inte
 ## Datasets utilizados
 1. FakeNewsNet
 - Fuente: https://www.kaggle.com/datasets/mdepak/fakenewsnet
-- Dominio: Noticias políticas verificadas 
-- Modalidades: Texto + Imágenes
-- Uso: Desarrollo y evaluación principal del modelo
+- Dominio: Noticias políticas verificadas. 
+- Modalidades: Texto + Imágenes.
+- Uso: Desarrollo y evaluación principal del modelo.
 
 2. Fakeddit (Validación)
 - Fuente: https://www.kaggle.com/datasets/mdepak/fakeddit
-- Dominio: Memes y contenido viral de Reddit
-- Modalidades: Títulos + Imágenes
-- Uso: Validación cruzada entre dominios
+- Dominio: Memes y contenido viral de Reddit.
+- Modalidades: Títulos + Imágenes.
+- Uso: Validación cruzada entre dominios.
+
+## 📄 Licencia
+Este proyecto es de uso académico.
 
 ## Autores
-- Carrillo M. Erik
-- Lopez R. Darianna Isabel
-- Rojas V. Evelyne
+- Carrillo M. Erik.
+- Lopez R. Darianna Isabel.
+- Rojas V. Evelyne.
