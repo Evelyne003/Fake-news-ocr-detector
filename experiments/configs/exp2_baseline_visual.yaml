@@ -1,0 +1,43 @@
+# Experimento 2: Baseline Solo Imagen (VGG16 + MLP)
+# Dataset: FakeNewsNet
+# Objetivo: Establecer baseline usando solo características visuales
+
+experiment:
+  name: exp2_baseline_visual_fakenewsnet
+  description: >
+    Baseline usando solo características visuales extraídas con VGG16.
+    Features pre-entrenadas + Red Neuronal.
+  dataset: FakeNewsNet
+  seed: 42
+
+data:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  batch_size: 32
+  shuffle: true
+  num_workers: 4
+
+model:
+  type: visual_only
+  visual_features: 4096
+  hidden_layers: [512, 256, 128]
+  dropout: 0.3
+  num_classes: 2
+
+training:
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: adam
+  loss: binary_crossentropy
+  early_stopping:
+    patience: 10
+    monitor: val_loss
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - auc_roc

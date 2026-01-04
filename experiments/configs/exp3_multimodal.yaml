@@ -1,0 +1,56 @@
+# Experimento 3: Modelo Multimodal con Fusión Tardía
+# Dataset: FakeNewsNet
+# Objetivo: Demostrar ventaja de fusión multimodal
+
+experiment:
+  name: exp3_multimodal_fakenewsnet
+  description: >
+    Modelo multimodal con fusión tardía (late fusion).
+    Combina características textuales (OCR + TF-IDF) y visuales (VGG16).
+  dataset: FakeNewsNet
+  seed: 42
+
+data:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  batch_size: 32
+  shuffle: true
+  num_workers: 4
+
+model:
+  type: multimodal
+  fusion_type: late
+  fusion_method: concatenation
+  
+  # Rama textual
+  text_features: 5000
+  text_hidden_layers: [512, 256]
+  
+  # Rama visual
+  visual_features: 4096
+  visual_hidden_layers: [512, 256]
+  
+  # Fusión
+  fusion_embedding_dim: 128
+  fusion_hidden_layers: [128, 64]
+  
+  dropout: 0.3
+  num_classes: 2
+
+training:
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: adam
+  loss: binary_crossentropy
+  early_stopping:
+    patience: 10
+    monitor: val_loss
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - auc_roc

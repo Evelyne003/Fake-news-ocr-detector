@@ -1,0 +1,43 @@
+# Experimento 1: Baseline Solo Texto (TF-IDF + MLP)
+# Dataset: FakeNewsNet
+# Objetivo: Establecer baseline usando solo características textuales
+
+experiment:
+  name: exp1_baseline_text_fakenewsnet
+  description: >
+    Baseline usando solo características textuales extraídas por OCR.
+    Vectorización TF-IDF + Red Neuronal.
+  dataset: FakeNewsNet
+  seed: 42
+
+data:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  batch_size: 32
+  shuffle: true
+  num_workers: 4
+
+model:
+  type: text_only
+  text_features: 5000
+  hidden_layers: [512, 256, 128]
+  dropout: 0.3
+  num_classes: 2
+
+training:
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: adam
+  loss: binary_crossentropy
+  early_stopping:
+    patience: 10
+    monitor: val_loss
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - auc_roc

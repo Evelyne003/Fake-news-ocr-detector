@@ -1,0 +1,54 @@
+# Experimento 4: Análisis de Ablación - Métodos de Fusión
+# Dataset: FakeNewsNet
+# Objetivo: Comparar diferentes estrategias de fusión
+
+experiment:
+  name: exp4_ablation_fusion_methods
+  description: >
+    Análisis de ablación comparando diferentes métodos de fusión:
+    concatenación, suma, multiplicación, promedio y atención.
+    Se ejecutarán múltiples sub-experimentos.
+  dataset: FakeNewsNet
+  seed: 42
+
+data:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  batch_size: 32
+  shuffle: true
+  num_workers: 4
+
+model:
+  type: multimodal
+  fusion_type: late
+  fusion_method: sum  # Cambiar para cada sub-experimento
+  
+  text_features: 5000
+  text_hidden_layers: [512, 256]
+  
+  visual_features: 4096
+  visual_hidden_layers: [512, 256]
+  
+  fusion_embedding_dim: 128
+  fusion_hidden_layers: [128, 64]
+  
+  dropout: 0.3
+  num_classes: 2
+
+training:
+  epochs: 40
+  learning_rate: 0.001
+  optimizer: adam
+  loss: binary_crossentropy
+  early_stopping:
+    patience: 8
+    monitor: val_loss
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - auc_roc
