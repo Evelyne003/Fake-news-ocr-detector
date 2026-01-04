@@ -30,6 +30,8 @@ ENV/
 *.ipynb_checkpoints
 
 # Data (no subir datasets pesados)
+# Data dentro de src
+src/data/
 data/*/raw/*.csv
 data/*/raw/*.json
 data/*/raw/images/
